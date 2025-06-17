@@ -4,14 +4,16 @@ use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, time};
 use zksync_consensus_engine::{testonly::TestEngine, Transaction};
 use zksync_consensus_roles::validator;
 
-use crate::testonly;
+use crate::{testonly, CONNECT_RETRY};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_push_tx_propagation() {
+    const NUM_NODES: usize = 10;
+
     abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::Setup::new(rng, 10);
+    let setup = validator::testonly::Setup::new(rng, NUM_NODES);
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
@@ -36,18 +38,24 @@ async fn test_push_tx_propagation() {
             nodes.push((tx_pool_sender, mempool, network));
         }
 
-        ctx.sleep(time::Duration::seconds(1)).await.unwrap();
+        // Wait enough time to establish connections. Normally at least one retry is
+        // necessary to get all connections established.
+        ctx.sleep(2 * CONNECT_RETRY).await.unwrap();
 
+        // Pick a random node and add a transaction to its mempool.
+        let node_idx = rng.gen_range(0..NUM_NODES);
         let tx: Transaction = rng.gen();
-        nodes[0].0.send(tx).unwrap();
+        nodes[node_idx].0.send(tx.clone()).unwrap();
 
-        ctx.sleep(time::Duration::seconds(1)).await.unwrap();
+        // Wait for the transaction to be gossiped to all nodes.
+        ctx.sleep(time::Duration::seconds(5)).await.unwrap();
 
-        for (i, node) in nodes.iter().enumerate() {
-            println!("mempool node[{}]: {:?}", i, node.1.lock().unwrap().len());
+        // Check that the transaction is in the mempool of all nodes.
+        for node in nodes.iter() {
+            let mempool = node.1.lock().unwrap();
+            assert_eq!(mempool.len(), 1);
+            assert!(mempool.contains(&tx));
         }
-
-        panic!();
 
         Ok(())
     })
