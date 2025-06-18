@@ -29,6 +29,7 @@ pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
 pub(crate) mod push_block_store_state;
+pub(crate) mod push_tx;
 pub(crate) mod push_validator_addrs;
 #[cfg(test)]
 pub(crate) mod testonly;

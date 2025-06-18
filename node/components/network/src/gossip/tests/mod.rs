@@ -25,6 +25,7 @@ use crate::{
 };
 
 mod fetch_blocks;
+mod push_tx;
 mod syncing;
 
 #[tokio::test]

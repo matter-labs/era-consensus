@@ -4,8 +4,8 @@ use std::{fmt, marker::PhantomData, ops, sync::Arc};
 
 pub use tokio::{
     sync::{
-        watch, Mutex, MutexGuard, Notify, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore,
-        SemaphorePermit,
+        broadcast, watch, Mutex, MutexGuard, Notify, OwnedMutexGuard, OwnedSemaphorePermit,
+        Semaphore, SemaphorePermit,
     },
     task::yield_now,
 };
@@ -148,8 +148,6 @@ pub async fn wait_for<'a, T>(
     recv: &'a mut watch::Receiver<T>,
     pred: impl Fn(&T) -> bool,
 ) -> ctx::OrCanceled<watch::Ref<'a, T>> {
-    // TODO(gprusak): wait_for is not documented to be cancel-safe.
-    // We should use changed() instead.
     if let Ok(res) = ctx.wait(recv.wait_for(pred)).await? {
         return Ok(res);
     }
@@ -167,6 +165,31 @@ pub async fn wait_for_some<T, R>(
     loop {
         if let Some(v) = pred(&*changed(ctx, recv).await?) {
             return Ok(v);
+        }
+    }
+}
+
+/// Context-aware wrapper for the `recv` method of the `tokio::sync::broadcast` channel.
+/// If the channel lags, we log it and continue. If the channel is closed, we wait for
+/// context cancelation. So this method never errors by itself.
+pub async fn broadcast_recv<T: Clone>(
+    ctx: &ctx::Ctx,
+    recv: &mut broadcast::Receiver<T>,
+) -> ctx::OrCanceled<T> {
+    loop {
+        match ctx.wait(recv.recv()).await? {
+            Ok(v) => return Ok(v),
+            // Lagged is expected when the channel is full. If it happens we just log it
+            // and continue.
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                tracing::debug!("broadcast channel lagged by {} messages", n);
+                continue;
+            }
+            // If the channel is closed, we wait for the cancelation.
+            Err(broadcast::error::RecvError::Closed) => {
+                ctx.canceled().await;
+                return Err(ctx::Canceled);
+            }
         }
     }
 }
