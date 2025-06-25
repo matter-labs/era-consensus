@@ -27,6 +27,9 @@ pub(super) struct EngineInterface {
     /// Latency of a successful `set_state()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) set_state_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `push_tx()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) push_tx_latency: vise::Histogram<time::Duration>,
 }
 
 #[vise::register]

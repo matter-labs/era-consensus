@@ -9,7 +9,8 @@ enum Capability {
   CONSENSUS = 0;
   PING = 2;
   PUSH_VALIDATOR_ADDRS = 1;
-  PUSH_BLOCK_STORE_STATE = 3;
+  PUSH_BLOCK_STORE_STATE = 3; // deprecate with v1?
   GET_BLOCK = 4;
   PUSH_BLOCK_STORE_STATE_V2 = 9;
+  PUSH_TX = 10;
 }
