@@ -29,6 +29,7 @@ impl Distribution<config::App> for EncodeDist {
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
             debug_page: self.sample(rng),
+            fetch_schedule_interval: self.sample(rng),
         }
     }
 }

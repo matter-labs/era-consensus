@@ -337,7 +337,8 @@ async fn test_sidechannel_sync() {
             // Build a custom persistent store, so that we can tweak it later.
             let engine = in_memory::Engine::new_random(&setup, setup.first_block());
             engines.push(engine.clone());
-            let (manager, runner) = EngineManager::new(ctx, Box::new(engine)).await?;
+            let (manager, runner) =
+                EngineManager::new(ctx, Box::new(engine), time::Duration::seconds(1)).await?;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));

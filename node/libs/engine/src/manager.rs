@@ -23,6 +23,8 @@ pub struct EngineManager {
     block_store: sync::watch::Sender<BlockStore>,
     // A map of epoch number to validator schedule with lifetime information
     epoch_schedule: sync::watch::Sender<BTreeMap<validator::EpochNumber, ScheduleWithLifetime>>,
+    // The interval at which we fetch the pending validator schedule.
+    fetch_schedule_interval: time::Duration,
 }
 
 impl EngineManager {
@@ -33,6 +35,7 @@ impl EngineManager {
     pub async fn new(
         ctx: &ctx::Ctx,
         interface: Box<dyn EngineInterface>,
+        fetch_schedule_interval: time::Duration,
     ) -> ctx::Result<(Arc<Self>, EngineManagerRunner)> {
         // Get the genesis.
         let genesis = interface.genesis(ctx).await.wrap("interface.genesis()")?;
@@ -73,6 +76,7 @@ impl EngineManager {
             genesis,
             interface,
             epoch_schedule: sync::watch::channel(epoch_schedule).0,
+            fetch_schedule_interval,
         });
 
         Ok((this.clone(), EngineManagerRunner(this)))
@@ -583,8 +587,7 @@ impl EngineManagerRunner {
 
                         // Epochs should be at least minutes apart so that validators have time to
                         // establish network connections. So we don't need to check for new epochs too often.
-                        // TODO: Maybe make this configurable.
-                        ctx.sleep(time::Duration::seconds(5)).await?;
+                        ctx.sleep(self.0.fetch_schedule_interval).await?;
                     }
                 });
             }
