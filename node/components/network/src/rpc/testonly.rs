@@ -39,6 +39,12 @@ impl Distribution<rpc::push_validator_addrs::Req> for Standard {
     }
 }
 
+impl Distribution<rpc::push_tx::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::push_tx::Req {
+        rpc::push_tx::Req(rng.gen())
+    }
+}
+
 impl Distribution<rpc::push_block_store_state::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::push_block_store_state::Req {
         rpc::push_block_store_state::Req { state: rng.gen() }

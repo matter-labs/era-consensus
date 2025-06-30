@@ -51,6 +51,21 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
 }
 
 #[async_trait]
+impl rpc::Handler<rpc::push_tx::Rpc> for &PushServer<'_> {
+    fn max_req_size(&self) -> usize {
+        self.net.cfg.max_tx_size
+    }
+    async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_tx::Req) -> anyhow::Result<()> {
+        if self.net.engine_manager.push_tx(ctx, req.0.clone()).await? {
+            let tx_hash = req.0.hash();
+            self.net.tx_pool.send(req.0).context("tx_pool.send()")?;
+            tracing::trace!("added transaction with hash {:?} to tx pool", tx_hash);
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     fn max_req_size(&self) -> usize {
         10 * kB
@@ -90,6 +105,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_validator_addrs_rate,
         );
+        let push_tx_client = rpc::Client::<rpc::push_tx::Rpc>::new(ctx, self.cfg.rpc.push_tx_rate);
         let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
@@ -105,6 +121,8 @@ impl Network {
                     &push_server,
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
+                .add_client(&push_tx_client)
+                .add_server::<rpc::push_tx::Rpc>(ctx, &push_server, self.cfg.rpc.push_tx_rate)
                 .add_client(&push_block_store_state_client)
                 .add_server::<rpc::push_block_store_state::Rpc>(
                     ctx,
@@ -154,6 +172,19 @@ impl Network {
                     old = new;
                     let req = rpc::push_validator_addrs::Req(diff);
                     push_validator_addrs_client.call(ctx, &req, kB).await?;
+                }
+            });
+
+            // Push new transactions to peer.
+            s.spawn::<()>(async {
+                // Get a receiver to the tx pool.
+                let mut rec = self.tx_pool.subscribe();
+                loop {
+                    // Wait for a new transaction.
+                    let tx = sync::broadcast_recv(ctx, &mut rec).await?;
+                    let req = rpc::push_tx::Req(tx);
+                    // Push it to the peer.
+                    push_tx_client.call(ctx, &req, kB).await?;
                 }
             });
 

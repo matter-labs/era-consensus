@@ -20,6 +20,16 @@ message PushValidatorAddrs {
   repeated roles.validator.Signed net_addresses = 1;
 }
 
+message Transaction {
+  // Transaction bytes.
+  optional bytes tx = 1; // required
+}
+
+message PushTx {
+  // Transaction
+  optional Transaction tx = 1; // required
+}
+
 message Last {
   oneof t {
     uint64 pre_genesis = 2;

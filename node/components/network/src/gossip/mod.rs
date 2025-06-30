@@ -19,7 +19,7 @@ use fetch::RequestItem;
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, scope, sync};
-use zksync_consensus_engine::EngineManager;
+use zksync_consensus_engine::{EngineManager, Transaction};
 use zksync_consensus_roles::{node, validator};
 
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
@@ -63,9 +63,10 @@ pub(crate) struct Network {
     /// Sender of the channel to the consensus component.
     pub(crate) consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     /// Queue of block fetching requests.
-    ///
     /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
+    /// Sender of the channel of transactions to be gossiped.
+    pub(crate) tx_pool: sync::broadcast::Sender<Transaction>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -89,8 +90,9 @@ impl Network {
             validator_addrs: ValidatorAddrsWatch::default(),
             cfg,
             fetch_queue: fetch::Queue::default(),
-            engine_manager,
+            tx_pool: engine_manager.tx_pool_sender(),
             push_validator_addrs_calls: 0.into(),
+            engine_manager,
         })
     }
 

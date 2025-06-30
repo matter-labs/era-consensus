@@ -11,18 +11,25 @@ use zksync_consensus_roles::validator::{self, Block};
 use crate::{
     block_store::BlockStore,
     metrics::{self, BLOCK_STORE},
-    BlockStoreState, EngineInterface, Last,
+    BlockStoreState, EngineInterface, Last, Transaction,
 };
 
 /// A wrapper around a EngineInterface which adds caching blocks in-memory
 /// and other useful utilities.
 #[derive(Debug)]
 pub struct EngineManager {
+    // Anything that implements EngineInterface.
     interface: Box<dyn EngineInterface>,
+    // The genesis specification of the chain.
     genesis: validator::Genesis,
+    // A watch channel over the current block store state.
     block_store: sync::watch::Sender<BlockStore>,
-    // A map of epoch number to validator schedule with lifetime information
+    // A map of epoch number to validator schedule with lifetime information.
     epoch_schedule: sync::watch::Sender<BTreeMap<validator::EpochNumber, ScheduleWithLifetime>>,
+    // A channel to add transactions to be gossiped to the network. We assume that the
+    // transactions are already verified. So this is meant to be used by the mempool in
+    // the execution layer to send new transactions to the network.
+    tx_pool: sync::broadcast::Sender<Transaction>,
 }
 
 impl EngineManager {
@@ -73,6 +80,9 @@ impl EngineManager {
             genesis,
             interface,
             epoch_schedule: sync::watch::channel(epoch_schedule).0,
+            // We make the tx pool bounded to 1000 transactions. This is a reasonable limit
+            // as we expect this channel to be empty most of the time.
+            tx_pool: sync::broadcast::channel(1000).0,
         });
 
         Ok((this.clone(), EngineManagerRunner(this)))
@@ -394,6 +404,31 @@ impl EngineManager {
             .context("set_state()")?;
         t.observe();
         Ok(())
+    }
+
+    /// Pushes a transaction to the mempool in the execution layer. If it's a valid transaction
+    /// and hasn't been added before, it will be added to the mempool now and return true.
+    /// Otherwise, it will return false.
+    pub async fn push_tx(&self, ctx: &ctx::Ctx, tx: Transaction) -> ctx::Result<bool> {
+        let t = metrics::ENGINE_INTERFACE.push_tx_latency.start();
+        let accepted = self.interface.push_tx(ctx, tx).await.wrap("push_tx()")?;
+        t.observe();
+        Ok(accepted)
+    }
+
+    /// Returns a Sender handle to the tx pool. It can be used to send transactions to be gossiped
+    /// to the network. We assume that the transactions are already verified. So this is meant to be
+    /// used by the mempool in the execution layer to send new transactions to the network.
+    /// Note that this is bounded, as documented in the tokio broadcast channel documentation, so
+    /// transactions might get dropped if the channel is full.
+    pub fn tx_pool_sender(&self) -> sync::broadcast::Sender<Transaction> {
+        self.tx_pool.clone()
+    }
+
+    /// Returns a Receiver handle to the tx pool. It is used to receive transactions to be gossiped
+    /// to the network.
+    pub fn tx_pool_receiver(&self) -> sync::broadcast::Receiver<Transaction> {
+        self.tx_pool.subscribe()
     }
 
     /// Returns the epoch number for the given block number, if it exists.

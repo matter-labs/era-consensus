@@ -8,7 +8,7 @@ use std::{
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
-use zksync_consensus_engine::{BlockStoreState, EngineInterface, Last};
+use zksync_consensus_engine::{BlockStoreState, EngineInterface, Last, Transaction};
 use zksync_consensus_roles::validator;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
@@ -242,5 +242,9 @@ impl EngineInterface for RocksDB {
         _number: validator::BlockNumber,
     ) -> ctx::Result<validator::Payload> {
         Ok(validator::Payload(vec![]))
+    }
+
+    async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: Transaction) -> ctx::Result<bool> {
+        Ok(false)
     }
 }
