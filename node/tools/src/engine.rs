@@ -245,6 +245,6 @@ impl EngineInterface for RocksDB {
     }
 
     async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: Transaction) -> ctx::Result<bool> {
-        Ok(true)
+        Ok(false)
     }
 }
