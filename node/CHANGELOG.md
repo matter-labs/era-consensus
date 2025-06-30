@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/matter-labs/era-consensus/compare/v0.11.4...v0.12.0) (2025-06-30)
+
+
+### Features
+
+* Transaction propagation ([#267](https://github.com/matter-labs/era-consensus/issues/267)) ([1178890](https://github.com/matter-labs/era-consensus/commit/117889039a8d2245f9beb472391019c90d93f239))
+
 ## [0.11.4](https://github.com/matter-labs/era-consensus/compare/v0.11.3...v0.11.4) (2025-06-16)
 
 
