@@ -30,6 +30,10 @@ pub struct Config {
 
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
+    /// Maximal size of a transaction. This only applies to transactions propagated
+    /// over the gossip network. Block payloads may contain transactions that are larger than this
+    /// (potentially up to the max payload size).
+    pub max_tx_size: usize,
     /// The duration of the view timeout, in milliseconds.
     pub view_timeout: time::Duration,
     /// Limit on the number of inbound connections outside
@@ -220,6 +224,7 @@ impl Executor {
             validator_key: self.config.validator_key.clone(),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_tx_size: self.config.max_tx_size,
             max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,

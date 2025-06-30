@@ -6,9 +6,11 @@ mod metrics;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
+mod transaction;
 
 pub use crate::{
     block_store::{BlockStoreState, Last},
     interface::EngineInterface,
     manager::{EngineManager, EngineManagerRunner},
+    transaction::Transaction,
 };

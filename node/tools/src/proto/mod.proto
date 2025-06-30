@@ -85,6 +85,10 @@ message AppConfig {
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
 
+  // Maximal size of a transaction. This only applies to transactions propagated
+  // over the gossip network.
+  optional uint64 max_tx_size = 20; // required; bytes
+
   // The duration of the view timeout.
   optional std.Duration view_timeout = 19; // required;
 
