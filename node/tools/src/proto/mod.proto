@@ -90,7 +90,7 @@ message AppConfig {
   optional uint64 max_tx_size = 20; // required; bytes
 
   // The duration of the view timeout.
-  optional std.Duration view_timeout = 19; // required; milliseconds
+  optional std.Duration view_timeout = 19; // required;
 
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
@@ -111,4 +111,7 @@ message AppConfig {
 
   // Debug page configuration.
   optional DebugPageConfig debug_page = 18; // optional
+
+  // The interval at which we fetch the pending validator schedule.
+  optional std.Duration fetch_schedule_interval = 21; // required;
 }

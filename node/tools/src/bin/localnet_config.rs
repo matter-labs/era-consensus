@@ -88,6 +88,7 @@ fn main() -> anyhow::Result<()> {
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),
             debug_page: None,
+            fetch_schedule_interval: time::Duration::seconds(30),
         })
         .collect();
 

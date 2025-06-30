@@ -2,7 +2,7 @@
 use assert_matches::assert_matches;
 use rand::Rng as _;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic, time};
 use zksync_consensus_engine::{
     testonly::{in_memory, TestEngine},
     BlockStoreState, EngineInterface as _, EngineManager,
@@ -347,7 +347,8 @@ async fn test_announce_truncated_block_range() {
     scope::run!(ctx, |ctx, s| async {
         // Build a custom persistent store, so that we can tweak it later.
         let mut engine = in_memory::Engine::new_random(&setup, setup.first_block());
-        let (manager, runner) = EngineManager::new(ctx, Box::new(engine.clone())).await?;
+        let (manager, runner) =
+            EngineManager::new(ctx, Box::new(engine.clone()), time::Duration::seconds(1)).await?;
         s.spawn_bg(runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), manager);
         s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));

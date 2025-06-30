@@ -84,6 +84,8 @@ pub struct App {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
     pub debug_page: Option<DebugPage>,
+
+    pub fetch_schedule_interval: time::Duration,
 }
 
 impl ProtoFmt for DebugPage {
@@ -152,6 +154,8 @@ impl ProtoFmt for App {
             gossip_static_inbound,
             gossip_static_outbound,
             debug_page: read_optional(&r.debug_page).context("debug_page")?,
+            fetch_schedule_interval: read_required(&r.fetch_schedule_interval)
+                .context("fetch_schedule_interval")?,
         })
     }
 
@@ -186,6 +190,7 @@ impl ProtoFmt for App {
                 })
                 .collect(),
             debug_page: self.debug_page.as_ref().map(|x| x.build()),
+            fetch_schedule_interval: Some(self.fetch_schedule_interval.build()),
         }
     }
 }
@@ -225,7 +230,8 @@ impl Configs {
                 200,
             ))
         };
-        let (engine_manager, runner) = EngineManager::new(ctx, engine).await?;
+        let (engine_manager, runner) =
+            EngineManager::new(ctx, engine, self.app.fetch_schedule_interval).await?;
 
         let e = executor::Executor {
             config: executor::Config {
