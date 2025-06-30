@@ -113,5 +113,5 @@ message AppConfig {
   optional DebugPageConfig debug_page = 18; // optional
 
   // The interval at which we fetch the pending validator schedule.
-  optional std.Duration fetch_schedule_interval = 20; // required;
+  optional std.Duration fetch_schedule_interval = 21; // required;
 }
