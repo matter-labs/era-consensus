@@ -3799,7 +3799,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_concurrency"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -3817,7 +3817,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_bft"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -3838,7 +3838,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_crypto"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "blst",
@@ -3855,7 +3855,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_engine"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -3875,7 +3875,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_executor"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "rand",
@@ -3893,7 +3893,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_network"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -3928,7 +3928,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_roles"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -3947,7 +3947,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_tools"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3976,7 +3976,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_utils"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "rand",
  "thiserror 1.0.69",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -4007,7 +4007,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf_build"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "heck",
