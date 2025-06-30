@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use in_memory::PayloadManager;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, time};
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 use crate::{
@@ -61,9 +61,10 @@ impl TestEngine {
         first: validator::BlockNumber,
     ) -> Self {
         let im_engine = in_memory::Engine::new_random(setup, first);
-        let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
-            .await
-            .unwrap();
+        let (engine, runner) =
+            EngineManager::new(ctx, Box::new(im_engine.clone()), time::Duration::seconds(1))
+                .await
+                .unwrap();
         Self {
             manager: engine,
             runner,
@@ -78,9 +79,10 @@ impl TestEngine {
         payload_manager: PayloadManager,
     ) -> Self {
         let im_engine = in_memory::Engine::new(setup, setup.first_block(), payload_manager);
-        let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
-            .await
-            .unwrap();
+        let (engine, runner) =
+            EngineManager::new(ctx, Box::new(im_engine.clone()), time::Duration::seconds(1))
+                .await
+                .unwrap();
         Self {
             manager: engine,
             runner,
@@ -94,9 +96,10 @@ impl TestEngine {
         assert!(setup.genesis.validators_schedule.is_none());
 
         let im_engine = in_memory::Engine::new_dynamic_schedule(setup, setup.first_block(), n);
-        let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
-            .await
-            .unwrap();
+        let (engine, runner) =
+            EngineManager::new(ctx, Box::new(im_engine.clone()), time::Duration::seconds(1))
+                .await
+                .unwrap();
         Self {
             manager: engine,
             runner,

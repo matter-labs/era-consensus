@@ -26,6 +26,8 @@ pub struct EngineManager {
     block_store: sync::watch::Sender<BlockStore>,
     // A map of epoch number to validator schedule with lifetime information.
     epoch_schedule: sync::watch::Sender<BTreeMap<validator::EpochNumber, ScheduleWithLifetime>>,
+    // The interval at which we fetch the pending validator schedule.
+    fetch_schedule_interval: time::Duration,
     // A channel to add transactions to be gossiped to the network. We assume that the
     // transactions are already verified. So this is meant to be used by the mempool in
     // the execution layer to send new transactions to the network.
@@ -40,6 +42,7 @@ impl EngineManager {
     pub async fn new(
         ctx: &ctx::Ctx,
         interface: Box<dyn EngineInterface>,
+        fetch_schedule_interval: time::Duration,
     ) -> ctx::Result<(Arc<Self>, EngineManagerRunner)> {
         // Get the genesis.
         let genesis = interface.genesis(ctx).await.wrap("interface.genesis()")?;
@@ -80,6 +83,7 @@ impl EngineManager {
             genesis,
             interface,
             epoch_schedule: sync::watch::channel(epoch_schedule).0,
+            fetch_schedule_interval,
             // We make the tx pool bounded to 1000 transactions. This is a reasonable limit
             // as we expect this channel to be empty most of the time.
             tx_pool: sync::broadcast::channel(1000).0,
@@ -618,8 +622,7 @@ impl EngineManagerRunner {
 
                         // Epochs should be at least minutes apart so that validators have time to
                         // establish network connections. So we don't need to check for new epochs too often.
-                        // TODO: Maybe make this configurable.
-                        ctx.sleep(time::Duration::seconds(5)).await?;
+                        ctx.sleep(self.0.fetch_schedule_interval).await?;
                     }
                 });
             }
