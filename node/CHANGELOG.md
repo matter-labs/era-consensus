@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/matter-labs/era-consensus/compare/v0.12.0...v0.13.0) (2025-07-02)
+
+
+### Features
+
+* fix debug page port reuse ([#274](https://github.com/matter-labs/era-consensus/issues/274)) ([f21ad8a](https://github.com/matter-labs/era-consensus/commit/f21ad8a4a34a9ea63b610511363d3b00e0fe6c51))
+
 ## [0.12.0](https://github.com/matter-labs/era-consensus/compare/v0.11.4...v0.12.0) (2025-06-30)
 
 
