@@ -169,7 +169,7 @@ impl Executor {
             if let Some(cfg) = self.config.debug_page.clone() {
                 s.spawn(async {
                     network::debug_page::Server::new(cfg, net)
-                        .run(ctx)
+                        .run(ctx, true)
                         .await
                         .context("Debug page server stopped")
                 });

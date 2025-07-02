@@ -5,7 +5,6 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use anyhow::Context as _;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
 use human_repr::{HumanCount, HumanDuration, HumanThroughput};
@@ -14,7 +13,11 @@ use hyper_util::rt::tokio::TokioIo;
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
 use tokio_rustls::{server::TlsStream, TlsAcceptor};
-use zksync_concurrency::{ctx, net, scope};
+use zksync_concurrency::{
+    ctx,
+    net::{self, tcp::ListenerAddr},
+    scope,
+};
 use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_roles::{node, validator};
 
@@ -64,10 +67,9 @@ impl Server {
     }
 
     /// Runs the Server.
-    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(self.config.addr)
-            .await
-            .context("TcpListener::bind()")?;
+    pub async fn run(&self, ctx: &ctx::Ctx, in_production: bool) -> anyhow::Result<()> {
+        let addr = ListenerAddr::new(self.config.addr);
+        let listener = addr.bind(in_production)?;
         self.run_with_listener(ctx, listener).await
     }
 
