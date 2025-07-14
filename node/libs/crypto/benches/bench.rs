@@ -1,4 +1,3 @@
-#![allow(clippy::missing_docs_in_private_items)]
 #![allow(missing_docs)]
 
 use std::iter::repeat_with;
