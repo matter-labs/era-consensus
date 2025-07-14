@@ -423,9 +423,7 @@ async fn twins_receive_loop(
     while let Ok(message) = recv.recv(ctx).await {
         let kind = message.message.msg.label();
 
-        let validator::ConsensusMsg::V2(chonky_msg) = &message.message.msg else {
-            unreachable!()
-        };
+        let validator::ConsensusMsg::V2(chonky_msg) = &message.message.msg;
 
         let can_send = |to| match router.can_send(chonky_msg, port, to) {
             Some(can_send) => Ok(can_send),
@@ -517,7 +515,6 @@ async fn twins_gossip_loop(
 fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::ViewNumber {
     match &msg.msg.msg {
         validator::ConsensusMsg::V2(msg) => msg.view_number(),
-        _ => unreachable!(),
     }
 }
 
@@ -528,9 +525,7 @@ fn output_msg_label(msg: &FromNetworkMessage) -> &str {
 fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v2::CommitQC> {
     use validator::v2::{ChonkyMsg, ProposalJustification};
 
-    let validator::ConsensusMsg::V2(chonky_msg) = &msg.msg.msg else {
-        unreachable!()
-    };
+    let validator::ConsensusMsg::V2(chonky_msg) = &msg.msg.msg;
 
     let justification = match chonky_msg {
         ChonkyMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),

@@ -179,7 +179,6 @@ impl UnitTestHarness {
                 validator::v2::ChonkyMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
                 _ => unreachable!(),
             },
-            _ => unreachable!(),
         }
     }
 
@@ -344,7 +343,6 @@ impl UnitTestHarness {
                 validator::v2::ChonkyMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
                 _ => unreachable!(),
             },
-            _ => unreachable!(),
         };
 
         self.process_replica_timeout_all(ctx, replica_timeout).await;

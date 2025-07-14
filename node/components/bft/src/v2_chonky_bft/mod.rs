@@ -84,7 +84,9 @@ impl StateMachine {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
         proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
     ) -> ctx::Result<Self> {
-        let backup_opt = config.engine_manager.get_state(ctx).await?.v2;
+        let backup_opt = match config.engine_manager.get_state(ctx).await? {
+            validator::ReplicaState::V2(backup) => Some(backup),
+        };
 
         let backup = match backup_opt {
             Some(backup) => {
@@ -182,7 +184,9 @@ impl StateMachine {
             let now = ctx.now();
 
             // Unwrap the v2 message from the others.
-            let validator::ConsensusMsg::V2(msg) = &req.msg.msg else {
+            #[allow(irrefutable_let_patterns)]
+            let validator::ConsensusMsg::V2(msg) = &req.msg.msg
+            else {
                 tracing::debug!(
                     "ChonkyBFT replica - Received a message from a different protocol version.",
                 );
