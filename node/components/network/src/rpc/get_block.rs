@@ -55,13 +55,7 @@ impl ProtoFmt for Resp {
             .transpose()
             .context("block_v2")?
             .map(B::FinalV2);
-        let block_v1 = r
-            .block
-            .as_ref()
-            .map(ProtoFmt::read)
-            .transpose()
-            .context("block_v1")?
-            .map(B::FinalV1);
+
         let pregenesis = r
             .pre_genesis
             .as_ref()
@@ -70,7 +64,7 @@ impl ProtoFmt for Resp {
             .context("pre_genesis")?
             .map(B::PreGenesis);
 
-        Ok(Self(block_v2.or(block_v1).or(pregenesis)))
+        Ok(Self(block_v2.or(pregenesis)))
     }
 
     fn build(&self) -> Self::Proto {
@@ -78,7 +72,6 @@ impl ProtoFmt for Resp {
         let mut p = Self::Proto::default();
         match self.0.as_ref() {
             Some(B::FinalV2(b)) => p.block_v2 = Some(b.build()),
-            Some(B::FinalV1(b)) => p.block = Some(b.build()),
             Some(B::PreGenesis(b)) => p.pre_genesis = Some(b.build()),
             None => {}
         }

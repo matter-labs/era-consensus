@@ -28,7 +28,6 @@ const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 type MsgPoolInner = BTreeMap<usize, Arc<io::ConsensusInputMessage>>;
 
 /// Pool of messages to send.
-/// It stores the newest message (with the highest view) of each type.
 /// Stored messages are available for retransmission in case of reconnect.
 pub(crate) struct MsgPool(sync::watch::Sender<MsgPoolInner>);
 
@@ -47,40 +46,12 @@ impl MsgPool {
 
     /// Inserts a message to the pool.
     pub(crate) fn send(&self, msg: Arc<io::ConsensusInputMessage>) {
-        self.0.send_if_modified(|msgs| {
+        self.0.send_modify(|msgs| {
             // Select a unique ID for the new message: using `last ID+1` is ok (will NOT cause
             // an ID to be reused), because whenever we remove a message, we also insert a message.
             let next = msgs.last_key_value().map_or(0, |(k, _)| k + 1);
-            // We first need to check if `msg` should actually be inserted.
-            let mut should_insert = true;
-            // Remove (at most) 1 message of the same type which is older.
-            msgs.retain(|_, v| {
-                use validator::ConsensusMsg as M;
-                // Messages of other types stay in the pool.
-                // TODO(gprusak): internals of `ConsensusMsg` are essentially
-                // an implementation detail of the bft crate. Consider moving
-                // this logic there.
-                match (&v.message.msg, &msg.message.msg) {
-                    (M::LeaderProposal(_), M::LeaderProposal(_)) => {}
-                    (M::ReplicaCommit(_), M::ReplicaCommit(_)) => {}
-                    (M::ReplicaNewView(_), M::ReplicaNewView(_)) => {}
-                    (M::ReplicaTimeout(_), M::ReplicaTimeout(_)) => {}
-                    _ => return true,
-                }
-                // If pool contains a message of the same type which is newer,
-                // then our message shouldn't be inserted.
-                if v.message.msg.view_number() >= msg.message.msg.view_number() {
-                    should_insert = false;
-                    return true;
-                }
-                // An older message of the same type should be removed.
-                false
-            });
-            if should_insert {
-                msgs.insert(next, msg);
-            }
-            // Notify receivers iff we have actually inserted a message.
-            should_insert
+
+            msgs.insert(next, msg);
         });
     }
 

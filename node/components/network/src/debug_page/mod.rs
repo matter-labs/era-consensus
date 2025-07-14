@@ -455,16 +455,16 @@ impl Server {
         let mut components = Vec::new();
 
         if days > 0 {
-            components.push(format!("{}d", days));
+            components.push(format!("{days}d"));
         }
         if hours > 0 {
-            components.push(format!("{}h", hours));
+            components.push(format!("{hours}h"));
         }
         if minutes > 0 {
-            components.push(format!("{}m", minutes));
+            components.push(format!("{minutes}m"));
         }
 
-        components.push(format!("{}s", seconds));
+        components.push(format!("{seconds}s"));
         components.join(" ")
     }
 }

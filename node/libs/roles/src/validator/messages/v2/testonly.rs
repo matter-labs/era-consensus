@@ -5,8 +5,8 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, ChonkyV2State, CommitQC, FinalBlock, LeaderProposal, Phase, ProposalJustification,
-    ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    BlockHeader, ChonkyMsg, ChonkyV2State, CommitQC, FinalBlock, LeaderProposal, Phase,
+    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
 };
 use crate::validator::{testonly::Setup, Block, EpochNumber, Payload, ViewNumber};
 
@@ -22,7 +22,6 @@ impl Setup {
                 .last()
                 .map(|b| match b {
                     Block::FinalV2(b) => b.justification.view().number.next(),
-                    Block::FinalV1(b) => ViewNumber(b.justification.view().number.next().0),
                     Block::PreGenesis(_) => ViewNumber(0),
                 })
                 .unwrap_or(ViewNumber(0)),
@@ -320,6 +319,18 @@ impl Distribution<ChonkyV2State> for Standard {
             high_commit_qc: rng.gen(),
             high_timeout_qc: rng.gen(),
             proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
+        }
+    }
+}
+
+impl Distribution<ChonkyMsg> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChonkyMsg {
+        match rng.gen_range(0..4) {
+            0 => ChonkyMsg::LeaderProposal(rng.gen()),
+            1 => ChonkyMsg::ReplicaCommit(rng.gen()),
+            2 => ChonkyMsg::ReplicaNewView(rng.gen()),
+            3 => ChonkyMsg::ReplicaTimeout(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }

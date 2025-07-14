@@ -7,7 +7,6 @@ use zksync_consensus_roles::{
 
 use crate::testonly::TestEngine;
 
-mod v1;
 mod v2;
 
 // Test checking that store doesn't accept pre-genesis blocks with invalid justification.

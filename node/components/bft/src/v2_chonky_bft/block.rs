@@ -59,8 +59,7 @@ impl StateMachine {
             }));
         }
 
-        let mut backup = validator::ReplicaState::default();
-        let backup_v2 = validator::v2::ChonkyV2State {
+        let backup = validator::ReplicaState::V2(validator::v2::ChonkyV2State {
             epoch: self.config.epoch,
             view_number: self.view_number,
             phase: self.phase,
@@ -68,8 +67,7 @@ impl StateMachine {
             high_commit_qc: self.high_commit_qc.clone(),
             high_timeout_qc: self.high_timeout_qc.clone(),
             proposals,
-        };
-        backup.v2 = Some(backup_v2);
+        });
 
         self.config
             .engine_manager

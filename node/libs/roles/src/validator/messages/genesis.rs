@@ -2,12 +2,9 @@ use std::{fmt, hash::Hash, ops::RangeInclusive};
 
 use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
-use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
+use zksync_protobuf::{read_optional, required, ProtoFmt};
 
-use super::{
-    v1::WeightedValidator, BlockNumber, LeaderSelection, LeaderSelectionMode, Schedule,
-    ValidatorInfo,
-};
+use super::{BlockNumber, Schedule};
 use crate::proto::validator::{self as proto};
 
 /// Genesis of the blockchain, unique for each blockchain instance.
@@ -39,62 +36,12 @@ impl ProtoFmt for GenesisRaw {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let protocol_version = ProtocolVersion(r.protocol_version.context("protocol_version")?);
-        let validators_schedule;
-
-        match protocol_version.0 {
-            1 => {
-                let validators: Vec<_> = r
-                    .validators_v1
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| WeightedValidator::read(v).context(i))
-                    .collect::<Result<_, _>>()
-                    .context("validators_v1")?;
-                let leader: LeaderSelectionMode =
-                    read_required(&r.leader_selection).context("leader_selection")?;
-
-                if let LeaderSelectionMode::Sticky(leader_pk) = leader {
-                    let validator_info: Vec<_> = validators
-                        .iter()
-                        .map(|v| ValidatorInfo {
-                            key: v.key.clone(),
-                            weight: v.weight,
-                            leader: v.key == leader_pk,
-                        })
-                        .collect();
-                    validators_schedule = Some(Schedule::new(
-                        validator_info,
-                        LeaderSelection {
-                            frequency: 1,
-                            mode: LeaderSelectionMode::RoundRobin,
-                        },
-                    )?);
-                } else {
-                    let validator_info: Vec<_> = validators
-                        .iter()
-                        .map(|v| ValidatorInfo {
-                            key: v.key.clone(),
-                            weight: v.weight,
-                            leader: true,
-                        })
-                        .collect();
-                    validators_schedule = Some(Schedule::new(
-                        validator_info,
-                        LeaderSelection {
-                            frequency: 1,
-                            mode: leader,
-                        },
-                    )?);
-                }
-            }
-            2 => {
-                validators_schedule =
-                    read_optional(&r.validators_schedule).context("validators_schedule")?;
-            }
+        let validators_schedule = match protocol_version.0 {
+            2 => read_optional(&r.validators_schedule).context("validators_schedule")?,
             _ => {
                 unreachable!();
             }
-        }
+        };
 
         Ok(GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
@@ -106,71 +53,18 @@ impl ProtoFmt for GenesisRaw {
     }
 
     fn build(&self) -> Self::Proto {
-        let validators_v1;
-        let leader_selection;
-        let validators_schedule;
-
-        match self.protocol_version.0 {
-            1 => {
-                let leader = self.validators_schedule.as_ref().unwrap().leaders();
-                if leader.len() == 1 {
-                    leader_selection = Some(
-                        LeaderSelectionMode::Sticky(
-                            self.validators_schedule
-                                .as_ref()
-                                .unwrap()
-                                .get(leader[0])
-                                .unwrap()
-                                .key
-                                .clone(),
-                        )
-                        .build(),
-                    );
-                } else if leader.len() == self.validators_schedule.as_ref().unwrap().len() {
-                    leader_selection = Some(
-                        self.validators_schedule
-                            .as_ref()
-                            .unwrap()
-                            .leader_selection()
-                            .mode
-                            .clone()
-                            .build(),
-                    );
-                } else {
-                    unreachable!();
-                }
-                validators_v1 = self
-                    .validators_schedule
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|v| {
-                        WeightedValidator {
-                            key: v.key.clone(),
-                            weight: v.weight,
-                        }
-                        .build()
-                    })
-                    .collect();
-                validators_schedule = None;
-            }
-            2 => {
-                validators_v1 = Vec::new();
-                leader_selection = None;
-                validators_schedule = self.validators_schedule.as_ref().map(|x| x.build());
-            }
+        let validators_schedule = match self.protocol_version.0 {
+            2 => self.validators_schedule.as_ref().map(|x| x.build()),
             _ => {
                 unreachable!();
             }
-        }
+        };
 
         Self::Proto {
             chain_id: Some(self.chain_id.0),
             fork_number: Some(self.fork_number.0),
             first_block: Some(self.first_block.0),
             protocol_version: Some(self.protocol_version.0),
-            validators_v1,
-            leader_selection,
             validators_schedule,
         }
     }
@@ -264,7 +158,7 @@ impl ProtocolVersion {
     /// The latest production version of the protocol. Note that this might not be the version
     /// that the current chain is using. You also should not rely on this value to check compatibility,
     /// instead use the `compatible` method.
-    pub const CURRENT: Self = Self(1);
+    pub const CURRENT: Self = Self(2);
 
     /// Returns the integer corresponding to this version.
     pub fn as_u32(self) -> u32 {
@@ -273,7 +167,7 @@ impl ProtocolVersion {
 
     /// Returns the range of supported protocol versions.
     pub fn supported_range() -> RangeInclusive<u32> {
-        1..=2
+        2..=2
     }
 
     /// Checks protocol version compatibility. Specifically, it checks which protocol
@@ -281,7 +175,7 @@ impl ProtocolVersion {
     /// deprecated, so a newer codebase might stop supporting an older protocol version even if
     /// no new protocol version is introduced.
     pub fn compatible(version: &ProtocolVersion) -> bool {
-        version.0 == 1 || version.0 == 2
+        version.0 == 2
     }
 }
 

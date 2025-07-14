@@ -32,7 +32,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
     let mut spec = validator::testonly::SetupSpec::new(rng, node_count);
     spec.first_block = spec.first_pregenesis_block + 2;
     let mut setup = validator::testonly::Setup::from_spec(rng, spec);
-    setup.push_blocks_v1(rng, EXCHANGED_STATE_COUNT);
+    setup.push_blocks_v2(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -90,7 +90,7 @@ async fn uncoordinated_block_syncing(
     let mut spec = validator::testonly::SetupSpec::new(rng, node_count);
     spec.first_block = spec.first_pregenesis_block + 2;
     let mut setup = validator::testonly::Setup::from_spec(rng, spec);
-    setup.push_blocks_v1(rng, EXCHANGED_STATE_COUNT);
+    setup.push_blocks_v2(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -145,7 +145,7 @@ async fn test_switching_on_nodes() {
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
     let cfgs = testonly::new_configs(rng, &setup, setup.validator_keys.len());
-    setup.push_blocks_v1(rng, cfgs.len());
+    setup.push_blocks_v2(rng, cfgs.len());
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, mut cfg) in cfgs.into_iter().enumerate() {
@@ -200,7 +200,7 @@ async fn test_switching_off_nodes() {
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
     let cfgs = testonly::new_configs(rng, &setup, setup.validator_keys.len());
-    setup.push_blocks_v1(rng, cfgs.len());
+    setup.push_blocks_v2(rng, cfgs.len());
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, mut cfg) in cfgs.into_iter().enumerate() {
@@ -257,7 +257,7 @@ async fn test_different_first_block() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 4);
-    setup.push_blocks_v1(rng, 10);
+    setup.push_blocks_v2(rng, 10);
     // It is important that all nodes will connect to each other,
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
@@ -323,7 +323,7 @@ async fn test_sidechannel_sync() {
     let mut spec = validator::testonly::SetupSpec::new(rng, 2);
     spec.first_block = spec.first_pregenesis_block + 2;
     let mut setup = validator::testonly::Setup::from_spec(rng, spec);
-    setup.push_blocks_v1(rng, 10);
+    setup.push_blocks_v2(rng, 10);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
         let mut engines = vec![];

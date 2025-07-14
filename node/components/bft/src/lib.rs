@@ -15,7 +15,6 @@ use zksync_consensus_roles::validator;
 mod config;
 mod metrics;
 pub mod testonly;
-mod v1_chonky_bft;
 mod v2_chonky_bft;
 
 // Renaming network messages for clarity.
@@ -70,10 +69,6 @@ impl Config {
 
             // Get the protocol version from genesis and start the corresponding state machine.
             match self.protocol_version() {
-                validator::ProtocolVersion(1) => self
-                    .run_v1(ctx, outbound_channel, inbound_channel)
-                    .await
-                    .wrap("run_v1()"),
                 validator::ProtocolVersion(2) => self
                     .run_v2(ctx, outbound_channel, inbound_channel)
                     .await
@@ -90,48 +85,6 @@ impl Config {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
         }
-    }
-
-    /// Starts the bft component with the v1 protocol version.
-    async fn run_v1(
-        self,
-        ctx: &ctx::Ctx,
-        outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
-        inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-    ) -> ctx::Result<()> {
-        let cfg = Arc::new(self);
-
-        let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
-        let replica = v1_chonky_bft::StateMachine::start(
-            ctx,
-            cfg.clone(),
-            outbound_channel.clone(),
-            inbound_channel,
-            proposer_sender,
-        )
-        .await?;
-
-        scope::run!(ctx, |ctx, s| async {
-            tracing::trace!(
-                "Starting consensus component (v1). Validator public key: {:?}.",
-                cfg.secret_key.public()
-            );
-
-            s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
-            s.spawn_bg(async {
-                v1_chonky_bft::proposer::run_proposer(
-                    ctx,
-                    cfg.clone(),
-                    outbound_channel,
-                    proposer_receiver,
-                )
-                .await
-                .wrap("run_proposer()")
-            });
-
-            Ok(())
-        })
-        .await
     }
 
     /// Starts the bft component with the v2 protocol version.

@@ -1,5 +1,4 @@
 //! Testonly utilities.
-#![allow(dead_code)]
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -55,6 +54,7 @@ pub(crate) fn make_config(key: node::SecretKey) -> Config {
 }
 
 /// Synchronously forwards data from one stream to another.
+#[allow(dead_code)]
 pub(crate) async fn forward(
     ctx: &ctx::Ctx,
     mut read: impl io::AsyncRead + Unpin,

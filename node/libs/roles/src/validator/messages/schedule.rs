@@ -27,11 +27,6 @@ impl Schedule {
         validators: impl IntoIterator<Item = ValidatorInfo>,
         leader_selection: LeaderSelection,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            !matches!(leader_selection.mode, LeaderSelectionMode::Sticky(_)),
-            "Sticky leader selection mode is not supported"
-        );
-
         let mut map = BTreeMap::new();
         let mut total_weight: u64 = 0;
         let mut leader_weight: u64 = 0;
@@ -171,7 +166,6 @@ impl Schedule {
                 }
                 unreachable!()
             }
-            LeaderSelectionMode::Sticky(_) => unreachable!(),
         }
     }
 }
@@ -283,9 +277,6 @@ impl ProtoFmt for LeaderSelection {
 pub enum LeaderSelectionMode {
     /// Select in a round-robin fashion, based on validators' index within the set.
     RoundRobin,
-    /// Select based on a sticky assignment to a specific validator.
-    /// To be deprecated together with v1.
-    Sticky(validator::PublicKey),
     /// Select pseudo-randomly, based on validators' weights.
     Weighted,
 }
@@ -298,12 +289,6 @@ impl ProtoFmt for LeaderSelectionMode {
             proto::leader_selection_mode::Mode::RoundRobin(_) => {
                 Ok(LeaderSelectionMode::RoundRobin)
             }
-            proto::leader_selection_mode::Mode::Sticky(inner) => {
-                let key = required(&inner.key).context("key")?;
-                Ok(LeaderSelectionMode::Sticky(validator::PublicKey::read(
-                    key,
-                )?))
-            }
             proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
         }
     }
@@ -312,13 +297,6 @@ impl ProtoFmt for LeaderSelectionMode {
             LeaderSelectionMode::RoundRobin => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::RoundRobin(
                     proto::leader_selection_mode::RoundRobin {},
-                )),
-            },
-            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Sticky(
-                    proto::leader_selection_mode::Sticky {
-                        key: Some(pk.build()),
-                    },
                 )),
             },
             LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {

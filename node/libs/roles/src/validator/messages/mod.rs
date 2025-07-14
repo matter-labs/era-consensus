@@ -6,10 +6,9 @@ mod msg;
 mod schedule;
 mod state;
 mod testonly;
+
 #[cfg(test)]
 mod tests;
-/// Version 1 of the consensus protocol.
-pub mod v1;
 /// Version 2 of the consensus protocol.
 pub mod v2;
 

@@ -126,8 +126,6 @@ pub enum Last {
     /// `<genesis.first_block`.
     PreGenesis(validator::BlockNumber),
     /// `>=genesis.first_block`.
-    FinalV1(validator::v1::CommitQC),
-    /// `>=genesis.first_block`.
     FinalV2(validator::v2::CommitQC),
 }
 
@@ -136,7 +134,6 @@ impl From<&validator::Block> for Last {
         use validator::Block as B;
         match b {
             B::PreGenesis(b) => Last::PreGenesis(b.number),
-            B::FinalV1(b) => Last::FinalV1(b.justification.clone()),
             B::FinalV2(b) => Last::FinalV2(b.justification.clone()),
         }
     }
@@ -147,7 +144,6 @@ impl Last {
     pub fn number(&self) -> validator::BlockNumber {
         match self {
             Last::PreGenesis(n) => *n,
-            Last::FinalV1(qc) => qc.header().number,
             Last::FinalV2(qc) => qc.header().number,
         }
     }

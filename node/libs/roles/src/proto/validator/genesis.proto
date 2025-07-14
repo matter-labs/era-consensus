@@ -5,15 +5,13 @@ package zksync.roles.validator;
 import "zksync/roles/validator/keys.proto";
 
 message Genesis {
-  reserved 1,2,9;
-  reserved "fork","validators", "attesters";
+  reserved 1, 2, 3, 4, 9;
+  reserved "fork","validators", "validators_v1", "leader_selection", "attesters";
 
   optional uint64 chain_id = 5; // required
   optional uint64 fork_number = 6; // required; ForkNumber
   optional uint64 first_block = 7; // required; BlockNumber
   optional uint32 protocol_version = 8; // required; ProtocolVersion
-  repeated WeightedValidator validators_v1 = 3;
-  optional LeaderSelectionMode leader_selection = 4;
   optional ValidatorSchedule validators_schedule = 10; // optional
 }
 
@@ -32,32 +30,21 @@ message ValidatorInfo {
   optional bool leader = 3; // required
 }
 
-// To be deprecated together with v1.
-message WeightedValidator {
-  optional PublicKey key = 1; // required
-  optional uint64 weight = 2; // required
-}
-
 message LeaderSelection {
   optional uint64 frequency = 1; // required
   optional LeaderSelectionMode mode = 2; // required
 }
 
 message LeaderSelectionMode {
-  reserved 4;
-  reserved "rota";
+  reserved 2, 4;
+  reserved "sticky", "rota";
 
   oneof mode {
     RoundRobin round_robin = 1;
-    Sticky sticky = 2; // To be deprecated together with v1.
     Weighted weighted = 3;
   }
-  
+
   message RoundRobin{}
-  // To be deprecated together with v1.
-  message Sticky{
-    optional PublicKey key = 1; // required
-  }
   message Weighted{}
 }
 

@@ -5,5 +5,4 @@ package zksync.roles.validator;
 import public "zksync/roles/validator/keys.proto";
 import public "zksync/roles/validator/genesis.proto";
 import public "zksync/roles/validator/consensus.proto";
-import public "zksync/roles/validator/v1.proto";
 import public "zksync/roles/validator/v2.proto";
