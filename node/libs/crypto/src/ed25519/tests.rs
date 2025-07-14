@@ -47,13 +47,11 @@ fn test_ed25519() -> anyhow::Result<()> {
         let sig2: Signature = secret_key.sign(msg_bytes);
         assert_eq!(
             sig1, sig2,
-            "Signature bytes not equal on message {:?}",
-            msg_bytes
+            "Signature bytes not equal on message {msg_bytes:?}"
         );
         assert!(
             public_key.verify(msg_bytes, &sig2).is_ok(),
-            "Signature verification failed on message {:?}",
-            msg_bytes
+            "Signature verification failed on message {msg_bytes:?}"
         );
     }
     Ok(())

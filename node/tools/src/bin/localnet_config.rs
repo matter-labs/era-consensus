@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
     for a in addrs_raw.split_whitespace() {
         addrs.push(
             a.parse::<SocketAddr>()
-                .with_context(|| format!("parse('{}')", a))?,
+                .with_context(|| format!("parse('{a}')"))?,
         );
     }
     anyhow::ensure!(!addrs.is_empty(), "at least 1 address has to be specified");
@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
         // Recreate the directory for the node's config.
         let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
+        fs::create_dir_all(&root).with_context(|| format!("create_dir_all({root:?})"))?;
         fs::set_permissions(root.clone(), Permissions::from_mode(0o700))
             .context("fs::set_permissions()")?;
 

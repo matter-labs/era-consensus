@@ -120,7 +120,7 @@ impl Executor {
                     let epoch = epoch.into();
                     self.spawn_components(ctx, self.network_config(), Some(epoch), Some(schedule))
                         .await
-                        .wrap(format!("Components for epoch {} stopped", epoch))
+                        .wrap(format!("Components for epoch {epoch} stopped"))
                 });
 
                 // Increment the epoch counter.
