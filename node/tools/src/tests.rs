@@ -52,7 +52,6 @@ impl Distribution<config::DebugPage> for EncodeDist {
     }
 }
 
-#[ignore = "Won't work until we deprecate v1, because of genesis"]
 #[test]
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
@@ -67,7 +66,7 @@ async fn test_reopen_rocksdb() {
     let rng = &mut ctx.rng();
     let dir = TempDir::new().unwrap();
     let mut setup = Setup::new(rng, 3);
-    setup.push_blocks_v1(rng, 5);
+    setup.push_blocks_v2(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
         if b.number() < setup.first_block() {

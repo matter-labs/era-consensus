@@ -17,7 +17,6 @@ pub fn callback(node_engine: Arc<EngineManager>) -> RpcResult<serde_json::Value>
         .map_err(|_| ErrorObjectOwned::from(ErrorCode::InternalError))?
     {
         Last::PreGenesis(_) => 0,
-        Last::FinalV1(qc) => qc.header().number.0,
         Last::FinalV2(qc) => qc.header().number.0,
     };
     // TODO(gprusak): this is the view of the last finalized block, not the current view of the
