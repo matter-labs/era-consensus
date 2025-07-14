@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{required, ProtoFmt};
 
-use super::{v1, v2, EpochNumber};
+use super::{v2, EpochNumber};
 use crate::proto::validator as proto;
 
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
@@ -12,21 +12,13 @@ use crate::proto::validator as proto;
 pub enum Block {
     /// Block with number `<genesis.first_block`.
     PreGenesis(PreGenesisBlock),
-    /// Block with number `>=genesis.first_block`. For protocol version 1.
-    FinalV1(v1::FinalBlock),
-    /// Block with number `>=genesis.first_block`. For protocol version 1.
+    /// Block with number `>=genesis.first_block`. For protocol version 2.
     FinalV2(v2::FinalBlock),
 }
 
 impl From<PreGenesisBlock> for Block {
     fn from(b: PreGenesisBlock) -> Self {
         Self::PreGenesis(b)
-    }
-}
-
-impl From<v1::FinalBlock> for Block {
-    fn from(b: v1::FinalBlock) -> Self {
-        Self::FinalV1(b)
     }
 }
 
@@ -41,7 +33,6 @@ impl Block {
     pub fn number(&self) -> BlockNumber {
         match self {
             Self::PreGenesis(b) => b.number,
-            Self::FinalV1(b) => b.number(),
             Self::FinalV2(b) => b.number(),
         }
     }
@@ -51,7 +42,6 @@ impl Block {
     pub fn epoch(&self) -> Option<EpochNumber> {
         match self {
             Self::PreGenesis(_) => None,
-            Self::FinalV1(_) => None,
             Self::FinalV2(b) => Some(b.epoch()),
         }
     }
@@ -60,7 +50,6 @@ impl Block {
     pub fn payload(&self) -> &Payload {
         match self {
             Self::PreGenesis(b) => &b.payload,
-            Self::FinalV1(b) => &b.payload,
             Self::FinalV2(b) => &b.payload,
         }
     }
@@ -73,7 +62,6 @@ impl ProtoFmt for Block {
         use proto::block::T;
         Ok(match required(&r.t)? {
             T::FinalV2(b) => Block::FinalV2(ProtoFmt::read(b).context("block_v2")?),
-            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block_v1")?),
             T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
         })
     }
@@ -83,7 +71,6 @@ impl ProtoFmt for Block {
         Self::Proto {
             t: Some(match self {
                 Block::FinalV2(b) => T::FinalV2(b.build()),
-                Block::FinalV1(b) => T::Final(b.build()),
                 Block::PreGenesis(b) => T::PreGenesis(b.build()),
             }),
         }

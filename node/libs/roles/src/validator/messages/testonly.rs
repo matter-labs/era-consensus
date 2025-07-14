@@ -113,10 +113,10 @@ impl Distribution<LeaderSelection> for Standard {
 
 impl Distribution<LeaderSelectionMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..2) {
             0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky(rng.gen()),
-            _ => LeaderSelectionMode::Weighted,
+            1 => LeaderSelectionMode::Weighted,
+            _ => unreachable!(),
         }
     }
 }
@@ -162,9 +162,10 @@ impl Distribution<PreGenesisBlock> for Standard {
 
 impl Distribution<Block> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..1) {
             0 => Block::PreGenesis(rng.gen()),
-            _ => Block::FinalV1(rng.gen()),
+            1 => Block::FinalV2(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
@@ -210,11 +211,8 @@ where
 
 impl Distribution<ConsensusMsg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusMsg {
-        match rng.gen_range(0..4) {
-            0 => ConsensusMsg::LeaderProposal(rng.gen()),
-            1 => ConsensusMsg::ReplicaCommit(rng.gen()),
-            2 => ConsensusMsg::ReplicaNewView(rng.gen()),
-            3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
+        match rng.gen_range(0..1) {
+            0 => ConsensusMsg::V2(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -222,14 +220,9 @@ impl Distribution<ConsensusMsg> for Standard {
 
 impl Distribution<ReplicaState> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaState {
-        ReplicaState {
-            view: rng.gen(),
-            phase: rng.gen(),
-            high_vote: rng.gen(),
-            high_commit_qc: rng.gen(),
-            high_timeout_qc: rng.gen(),
-            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
-            v2: rng.gen(),
+        match rng.gen_range(0..1) {
+            0 => ReplicaState::V2(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }

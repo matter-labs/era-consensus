@@ -68,18 +68,6 @@ pub(crate) fn leader_selection() -> LeaderSelection {
 }
 
 /// Hardcoded genesis.
-pub(crate) fn genesis_v1() -> Genesis {
-    GenesisRaw {
-        chain_id: ChainId(1337),
-        fork_number: ForkNumber(42),
-        first_block: BlockNumber(2834),
-        protocol_version: ProtocolVersion(1),
-        validators_schedule: Some(validators_schedule()),
-    }
-    .with_hash()
-}
-
-/// Hardcoded genesis.
 pub(crate) fn genesis_v2() -> Genesis {
     GenesisRaw {
         chain_id: ChainId(1337),
@@ -123,12 +111,10 @@ fn test_schema_encoding() {
     let rng = &mut ctx.rng();
 
     // In genesis.proto
-    // TODO: Uncomment this when we deprecate v1
-    //test_encode_random::<Genesis>(rng);
+    test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
     test_encode_random::<Schedule>(rng);
     test_encode_random::<ValidatorInfo>(rng);
-    test_encode_random::<v1::WeightedValidator>(rng);
     test_encode_random::<LeaderSelection>(rng);
     test_encode_random::<LeaderSelectionMode>(rng);
     test_encode_random::<PayloadHash>(rng);

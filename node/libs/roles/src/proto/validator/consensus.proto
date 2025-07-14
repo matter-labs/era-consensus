@@ -5,7 +5,6 @@ package zksync.roles.validator;
 import "zksync/roles/validator/discovery.proto";
 import "zksync/roles/validator/genesis.proto";
 import "zksync/roles/validator/keys.proto";
-import "zksync/roles/validator/v1.proto";
 import "zksync/roles/validator/v2.proto";
 import "zksync/std.proto";
 
@@ -16,29 +15,29 @@ message PreGenesisBlock {
 }
 
 message Block {
+  reserved 1;
+  reserved "final";
+
   // required
   oneof t {
     FinalBlockV2 final_v2 = 3;
-    FinalBlock final = 1;
     PreGenesisBlock pre_genesis = 2;
   }
 }
 
 message ConsensusMsg {
-  reserved 1, 3, 4;
-  reserved "replica_prepare", "leader_prepare", "leader_commit";
+  reserved 1, 2, 3, 4, 5, 6, 7;
+  reserved "replica_prepare", "leader_prepare", "leader_commit", "replica_commit", "replica_timeout", "replica_new_view", "leader_proposal";
 
-  oneof t { // required
-    ReplicaCommit replica_commit = 2;
-    ReplicaTimeout replica_timeout = 5;
-    ReplicaNewView replica_new_view = 6;
-    LeaderProposal leader_proposal = 7;
+  // required
+  oneof t {
     ChonkyMsgV2 v2 = 8;
   }
 }
 
 message Msg {
-  oneof t {// required
+  // required
+  oneof t {
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
@@ -56,14 +55,10 @@ message Signed {
 }
 
 message ReplicaState {
-  optional uint64 view = 1; // required; ViewNumber
-  optional Phase phase = 2; // required
-  optional ReplicaCommit high_vote = 3; // optional
-  // Note: name should be high_commit_qc
-  optional CommitQC high_qc = 4; // optional
-  repeated Proposal proposals = 5;
-  optional TimeoutQC high_timeout_qc = 6; // optional
-  // optional; will be required after we deprecate v1
+  reserved 1, 2, 3, 4, 5, 6;
+  reserved "view", "phase", "high_vote", "high_qc", "proposals", "high_timeout_qc";
+
+  // required
   oneof t {
     ChonkyV2State v2 = 7;
   }
