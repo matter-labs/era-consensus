@@ -38,7 +38,7 @@ impl Block {
     }
 
     /// Epoch number, if the block is a consensus block.
-    /// Returns `None` for pre-genesis blocks and v1 blocks.
+    /// Returns `None` for pre-genesis blocks.
     pub fn epoch(&self) -> Option<EpochNumber> {
         match self {
             Self::PreGenesis(_) => None,

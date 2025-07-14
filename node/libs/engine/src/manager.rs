@@ -199,20 +199,6 @@ impl EngineManager {
                     .context("verify_pregenesis_block()")?;
                 t.observe();
             }
-            Block::FinalV1(b) => {
-                // v1 always has a static schedule, so epoch is always 0.
-                if let Some(schedule_with_lifetime) =
-                    self.validator_schedule(validator::EpochNumber(0))
-                {
-                    b.verify(self.genesis.hash(), &schedule_with_lifetime.schedule)
-                        .context("block_v1.verify()")?;
-                } else {
-                    return Err(anyhow::format_err!(
-                        "cannot verify block v1: epoch schedule is not available"
-                    )
-                    .into());
-                }
-            }
             Block::FinalV2(b) => {
                 let epoch = b.epoch();
                 if let Some(schedule_with_lifetime) = self.validator_schedule(epoch) {
@@ -533,7 +519,6 @@ impl EngineManagerRunner {
                         Some(Last::FinalV2(qc)) => (qc.header().number, qc.message.view.epoch),
                         Some(Last::PreGenesis(n)) => (n, validator::EpochNumber(0)),
                         None => (self.0.genesis.first_block, validator::EpochNumber(0)),
-                        Some(Last::FinalV1(_)) => unreachable!(),
                     };
 
                     // Get the current validator schedule and insert it into the epoch schedule.

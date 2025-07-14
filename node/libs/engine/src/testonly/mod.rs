@@ -16,7 +16,8 @@ impl Distribution<Last> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Last {
         match rng.gen_range(0..2) {
             0 => Last::PreGenesis(rng.gen()),
-            _ => Last::FinalV1(rng.gen()),
+            1 => Last::FinalV2(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
