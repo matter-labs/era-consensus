@@ -632,7 +632,7 @@ pub struct ScheduleWithLifetime {
     /// active at the activation block.
     pub activation_block: validator::BlockNumber,
     /// The block number at which the schedule expires. It might not be present
-    /// if the schedule is static or the the next schedule is not yet known.
+    /// if the schedule is static or the next schedule is not yet known.
     /// Note that the schedule is still active at the expiration block.
     pub expiration_block: Option<validator::BlockNumber>,
 }
